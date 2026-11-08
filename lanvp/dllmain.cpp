@@ -17,6 +17,7 @@
 #include "config.h"
 #include "patching.h"
 #include "fix_fps.h"
+#include "fix_physics.h"
 #include "fix_resolution.h"
 #include "fix_aspect.h"
 #include "opt_borderless_window.h"
@@ -53,6 +54,8 @@ void Init()
 	{
 		RegisterPatch_Aspect();
 	}
+
+	physicsRate = options.physics_rate;
 
 	if (options.fps_limit > EPSILON)
 	{

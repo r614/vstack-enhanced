@@ -18,6 +18,7 @@ struct Options
 	double	fov_multiplier = 1.0f;
 	bool	borderless_window = true;
 	bool	skip_logos_and_legals = false;
+	int		physics_rate = 30;
 };
 
 bool LoadConfig(const wchar_t* path, Options& options);

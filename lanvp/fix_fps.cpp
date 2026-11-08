@@ -345,6 +345,7 @@ bool ApplyPatch_Framerate(Patch* patch)
 
 	// Frame-rate independent vehicle physics (see fix_physics.cpp)
 	ApplyPatch_Physics();
+	ApplyPatch_PhysicsRate();
 
 	return true;
 }
@@ -388,6 +389,7 @@ void __stdcall Hook_Frame()
 	birdMaxSpeed = multiplier * *defaultBirdMaxSpeed;
 
 	// Rescale per-frame vehicle physics constants
+	PhysicsRate_NewFrame(frameTime);
 	UpdatePhysicsConstants(multiplier);
 
 	lastTime = currTime;

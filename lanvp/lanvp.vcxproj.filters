@@ -15,6 +15,9 @@
     <ClCompile Include="fix_physics.cpp">
       <Filter>Patch</Filter>
     </ClCompile>
+    <ClCompile Include="fix_physics_rate.cpp">
+      <Filter>Patch</Filter>
+    </ClCompile>
     <ClCompile Include="fix_aspect.cpp">
       <Filter>Patch</Filter>
     </ClCompile>

@@ -66,6 +66,7 @@ struct FrameConstant
 	double			valueDouble;	// Replacement storage
 	float			valueFloat;
 	bool			applied;
+	double			scaled;			// Value for the current frame time
 };
 
 #define PATTERN(p) p, sizeof(p) / sizeof(p[0])
@@ -894,6 +895,35 @@ void ApplyPatch_Physics()
 	}
 }
 
+static bool useOriginal = false;
+
+static void WriteConstants()
+{
+	for (size_t i = 0; i < numConstants; i++)
+	{
+		FrameConstant& c = constants[i];
+		if (!c.applied)
+			continue;
+
+		double value = useOriginal ? c.original : c.scaled;
+		c.valueDouble	= value;
+		c.valueFloat	= (float)value;
+	}
+}
+
+//
+// While a vehicle update runs at the fixed 30 FPS rate (fix_physics_rate.cpp)
+// the constants must have their original values.
+//
+void SetPhysicsOriginal(bool original)
+{
+	if (useOriginal == original)
+		return;
+
+	useOriginal = original;
+	WriteConstants();
+}
+
 void UpdatePhysicsConstants(double multiplier)
 {
 	poseHoodDrag = 10.0 / multiplier;
@@ -904,11 +934,9 @@ void UpdatePhysicsConstants(double multiplier)
 	for (size_t i = 0; i < numConstants; i++)
 	{
 		FrameConstant& c = constants[i];
-		if (!c.applied)
-			continue;
-
-		double value = ScaleValue(c, multiplier);
-		c.valueDouble	= value;
-		c.valueFloat	= (float)value;
+		if (c.applied)
+			c.scaled = ScaleValue(c, multiplier);
 	}
+
+	WriteConstants();
 }

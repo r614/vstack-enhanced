@@ -1,15 +1,20 @@
-<p align="center">
-	<img width="50%" src="https://i.imgur.com/eNHPN3N.png">
-</p>
+# vstack-enhanced
 
-# V-Patch for L.A. Noire: Complete Edition
-*This project is not affiliated with Take-Two or Rockstar Games.*
+**An unofficial fork of [V-Patch](https://github.com/VaanaCZ/LANVP) by [Vaana](https://github.com/VaanaCZ).** It is V-Patch 2.0 with one addition: vehicle physics that behave the same at any frame rate. Everything else (FPS unlock, aspect ratio and ultrawide fixes, borderless window, etc.) is Vaana's work, unchanged.
 
-V-Patch is a lightweight community-developed patch designed to address common issues in the PC version of L.A. Noire. It also enables users to customize various technical aspects of the game, such as setting a custom field of view (FoV) or disabling the company logos that appear when starting the game. 
+This fork is not affiliated with or endorsed by Vaana or the V-Patch project, and is not affiliated with Take-Two or Rockstar Games. Please report problems with the physics changes here, not on the V-Patch issue tracker. For anything else, the [original V-Patch](https://github.com/VaanaCZ/LANVP) is the reference.
 
-## vstack-enhanced
+Install it the same way as V-Patch (see [Installation](#installation)), using a `lanvp.asi` built from this repository in place of the V-Patch one. It replaces V-Patch; do not install both.
 
-This fork adds frame-rate independent vehicle physics on top of V-Patch 2.0 (`lanvp/fix_physics.cpp`).
+The physics changes are new and have not been widely tested in game yet. The "car steering is more sensitive than it should be" issue listed under V-Patch's known issues is what they are meant to address.
+
+Like V-Patch, this fork is licensed under [CC BY-NC 4.0](LICENSE). The changes from V-Patch 2.0 are the files `lanvp/fix_physics.cpp`, `lanvp/fix_physics_rate.cpp`, `tools/verify_physics.py`, small hooks in `fix_fps.cpp`, `config.cpp` and `dllmain.cpp`, and this section of the README.
+
+## What this fork changes
+
+By default the vehicle physics run at a fixed 30 Hz (`physics_rate=30` in `lanvp.ini`, `lanvp/fix_physics_rate.cpp`): every 1/30 s the car and motorbike updates run exactly as they did at 30 FPS, and the forces they hand to Havok are re-applied on the frames in between, moved with the body. Havok still integrates every frame, so cars move smoothly at any frame rate, but the handling is the original 30 FPS handling, including the effect of the 30 FPS step size on stiff feedback such as the speed-dependent yaw damping. Wheel and body visuals update every frame. The paused update, which the game runs with a fixed 1/30 s every frame, is limited to 30 updates per second.
+
+With `physics_rate=0` the physics run every frame instead, and the fixes below rescale every per-frame value to the frame time.
 
 The car code was tuned for a fixed 30 FPS. Most of it scales with the frame time, but a number of state updates advance by a fixed amount every frame (filters, decays, countdowns), and two forces are scaled by the frame time twice or not at all. With the frame rate unlocked these run faster or slower than intended. The fix redirects each affected constant to a value recomputed every frame from the frame time, so behaviour at any frame rate matches 30 FPS. At exactly 30 FPS nothing changes.
 
@@ -23,9 +28,22 @@ Handling fixes:
 
 Cosmetic fixes: wheel spin-down while airborne, loose hood/trunk/bumper animations and part jiggle on damaged cars, and body sway and panel drag of non-simulated cars.
 
-The community workaround from issue #28 (scaling the 5.0 in the lateral force soft clamp) is not included: that clamp works on forces that are already integrated with the frame time, so scaling it adds grip at high frame rates instead of removing a frame-rate dependence.
+The community workaround from [V-Patch issue #28](https://github.com/VaanaCZ/LANVP/issues/28) (scaling the 5.0 in the lateral force soft clamp) is not included: that clamp works on forces that are already integrated with the frame time, so scaling it adds grip at high frame rates instead of removing a frame-rate dependence.
 
 `tools/verify_physics.py` checks every signature in `fix_physics.cpp` against a `LANoire.exe`.
+
+---
+
+*The rest of this README is the original V-Patch README.*
+
+<p align="center">
+	<img width="50%" src="https://i.imgur.com/eNHPN3N.png">
+</p>
+
+# V-Patch for L.A. Noire: Complete Edition
+*This project is not affiliated with Take-Two or Rockstar Games.*
+
+V-Patch is a lightweight community-developed patch designed to address common issues in the PC version of L.A. Noire. It also enables users to customize various technical aspects of the game, such as setting a custom field of view (FoV) or disabling the company logos that appear when starting the game. 
 
 ## What does V-Patch do?
 
@@ -110,7 +128,7 @@ In order to customize the settings of V-Patch, navigate to the game's directory 
 
 ## Known issues
 
-- Car steering is more sensitive than it should be. (vstack-enhanced: addressed by the physics fixes, pending in-game testing.)
+- Car steering is more sensitive than it should be.
 - On very high FPS (100+), the chandelier in the case "The Quarter Moon Murders" can break. If you encounter this issue, temporarily disable the patch or lower your FPS limit to below 100.
 
 > [!WARNING]

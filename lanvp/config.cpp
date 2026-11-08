@@ -74,6 +74,7 @@ bool LoadConfig(const wchar_t* path, Options& options)
 			READ_DOUBLE	(options, key, val, fov_multiplier);
 			READ_INTEGER(options, key, val, borderless_window);
 			READ_INTEGER(options, key, val, skip_logos_and_legals);
+			READ_INTEGER(options, key, val, physics_rate);
 		}
 	}
 
@@ -114,6 +115,17 @@ const char config[] =
 	"; 1 = enabled (default)\n"
 	"; 0 = disabled\n"
 	"aspect_correction=1\n"
+	"\n"
+	"; Runs vehicle physics at a fixed rate, as the game did at\n"
+	"; its original 30 FPS, while the cars still move smoothly at\n"
+	"; any frame rate. Reproduces the original handling exactly.\n"
+	"; With 0 the physics run every frame instead, with all\n"
+	"; per-frame values rescaled to the frame time.\n"
+	"; Only works if fps_unlock is also enabled!\n"
+	";\n"
+	"; 30 = fixed rate (default)\n"
+	"; 0  = every frame\n"
+	"physics_rate=30\n"
 	"\n"
 	"[options]\n"
 	"\n"
