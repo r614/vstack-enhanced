@@ -539,6 +539,89 @@ static const int patJiggleDamping[] =
 	0x08, 0x07, 0x00, 0x00
 };
 
+//
+// MOTORBIKE (MotorbikeDynamicsInstance)
+//
+// - Lateral acceleration [0x75C] smoothed by 0.25 per frame; it drives the
+//   lean torque (slot 4).
+// - Airborne pitch levelling: setAngularVelocity((w + (t - w) / 10) * 0.97)
+//   every frame while both wheels are off the ground (slot 7).
+// - Bump threshold on the per-frame suspension change (slot 7).
+// - Front wheel spin while airborne, +0.15 per frame (slot 13, cosmetic).
+// - Steering return [0x24] *= 0.8 and brake ramp [0x2C] += 0.025 per frame
+//   (slot 15, input).
+// - Steering [0x24] *= 0.5 per frame during a wheelie.
+// - Visual yaw sway [0x74] smoothed by 1/5 per frame (slot 5).
+//
+// The brake release and the pitch sway are handled by code caves below,
+// since their constants are in registers that other terms also use.
+//
+
+static const int patBikeAccelLerp[] =
+{
+	0xF2, 0x0F, 0x59, 0x0D, ANY, ANY, ANY, ANY,
+	0x0F, 0x5A, 0xC0, 0xF2, 0x0F, 0x58, 0xC8, 0x66,
+	0x0F, 0x5A, 0xC1, 0xF3, 0x0F, 0x11, 0x87, 0x5C,
+	0x07, 0x00, 0x00
+};
+
+static const int patBikeAirLevel[] =
+{
+	0xF3, 0x0F, 0x10, 0x0D, ANY, ANY, ANY, ANY,
+	0x0F, 0x28, 0x84, 0x24, 0xD4, 0x05, 0x00, 0x00,
+	0x8D, 0x94, 0x24, 0xF4, 0x05, 0x00, 0x00
+};
+
+static const int patBikeAirDamp[] =
+{
+	0x0F, 0x58, 0x84, 0x24, 0x24, 0x01, 0x00, 0x00,
+	0xF3, 0x0F, 0x10, 0x0D, ANY, ANY, ANY, ANY,
+	0x8D, 0x84, 0x24, 0x74, 0x03, 0x00, 0x00
+};
+
+static const int patBikeBump[] =
+{
+	0xF2, 0x0F, 0x10, 0x1D, ANY, ANY, ANY, ANY,
+	0x33, 0xC0, 0x8D, 0x8B, 0xE8, 0x02, 0x00, 0x00,
+	0x8D, 0xA4, 0x24, 0x00, 0x00, 0x00, 0x00
+};
+
+static const int patBikeWheelAirSpin[] =
+{
+	0xF2, 0x0F, 0x58, 0x05, ANY, ANY, ANY, ANY,
+	0x66, 0x0F, 0x5A, 0xC0, 0xF3, 0x0F, 0x11, 0x81,
+	0x84, 0x03, 0x00, 0x00
+};
+
+static const int patBikeSteerDecay[] =
+{
+	0xF2, 0x0F, 0x59, 0x05, ANY, ANY, ANY, ANY,
+	0x66, 0x0F, 0x5A, 0xC0, 0xF3, 0x0F, 0x11, 0x41,
+	0x24, 0x0F, 0x28, 0xCF
+};
+
+static const int patBikeBrakeRamp[] =
+{
+	0x0F, 0x5A, 0xE8, 0x66, 0x0F, 0x2F, 0xE5, 0x76,
+	0x0D, 0x0F, 0x5A, 0xC0, 0xF2, 0x0F, 0x58, 0x05,
+	ANY, ANY, ANY, ANY
+};
+
+static const int patBikeWheelieSteer[] =
+{
+	0xDC, 0x0D, ANY, ANY, ANY, ANY, 0xF2, 0x0F,
+	0x59, 0x05, ANY, ANY, ANY, ANY, 0x8D, 0x87,
+	0xD0, 0x06, 0x00, 0x00, 0x66, 0x0F, 0x5A, 0xC0
+};
+
+static const int patBikeSwayYaw[] =
+{
+	0xF2, 0x0F, 0x5E, 0x0D, ANY, ANY, ANY, ANY,
+	0x0F, 0x5A, 0xC0, 0xF2, 0x0F, 0x58, 0xC8, 0x66,
+	0x0F, 0x5A, 0xC1, 0x0F, 0x28, 0x8E, 0xA0, 0x02,
+	0x00, 0x00
+};
+
 static FrameConstant constants[] =
 {
 	{ L"Car impact countdown",	PATTERN(patCarImpactCountdown),	23, true,	0.1,	SCALE_STEP },
@@ -586,6 +669,15 @@ static FrameConstant constants[] =
 	{ L"Jiggle kick",	PATTERN(patJiggleKick),	12, true,	70.0,	SCALE_POWER, -2.0 },
 	{ L"Jiggle noise",	PATTERN(patJiggleNoise),	4, true,	30000.0,	SCALE_POWER, -1.5 },
 	{ L"Jiggle damping",	PATTERN(patJiggleDamping),	4, true,	0.75,	SCALE_DECAY },
+	{ L"Bike lateral accel smoothing",	PATTERN(patBikeAccelLerp),	4, true,	0.25,	SCALE_LERP },
+	{ L"Bike air levelling",	PATTERN(patBikeAirLevel),	4, false,	10.0,	SCALE_LERP_DIV },
+	{ L"Bike air angular damping",	PATTERN(patBikeAirDamp),	12, false,	0.9700000286102295,	SCALE_DECAY },
+	{ L"Bike bump threshold",	PATTERN(patBikeBump),	4, true,	0.05000000074505806,	SCALE_STEP },
+	{ L"Bike front wheel air spin",	PATTERN(patBikeWheelAirSpin),	4, true,	0.15000000596046448,	SCALE_STEP },
+	{ L"Bike steering return",	PATTERN(patBikeSteerDecay),	4, true,	0.800000011920929,	SCALE_DECAY },
+	{ L"Bike brake ramp",	PATTERN(patBikeBrakeRamp),	16, true,	0.02500000037252903,	SCALE_STEP },
+	{ L"Bike wheelie steer damping",	PATTERN(patBikeWheelieSteer),	10, true,	0.5,	SCALE_DECAY },
+	{ L"Bike sway yaw",	PATTERN(patBikeSwayYaw),	4, true,	5.0,	SCALE_LERP_DIV },
 	{ L"Sway roll kick",	PATTERN(patSwayKickRoll),	4, true,	0.5,	SCALE_STEP },
 };
 
@@ -731,6 +823,101 @@ static bool ApplyCave_RestCounter(BYTE* site)
 	return true;
 }
 
+//
+// Generic cave: replaces "length" bytes at site + hookOffset with a jump to
+// copied instructions followed by one instruction with an absolute memory
+// operand (opcode bytes + address of our variable), then jumps back to
+// site + hookOffset + length.
+//
+static bool MakeRedirectCave(BYTE* site, size_t hookOffset, size_t length,
+	const BYTE* prefix, size_t prefixLength, const BYTE* opcode, size_t opcodeLength, void* variable)
+{
+	BYTE cave[64];
+	size_t n = 0;
+
+	memcpy(&cave[n], prefix, prefixLength);		n += prefixLength;
+	memcpy(&cave[n], opcode, opcodeLength);		n += opcodeLength;
+	memcpy(&cave[n], &variable, sizeof(variable));	n += sizeof(variable);
+	cave[n++] = 0xE9;
+	size_t jmpOperand = n;
+	n += 4;
+
+	BYTE* pCave = (BYTE*)ExecCopy(cave, n);
+	if (!pCave)															return false;
+	WriteRel32(pCave + jmpOperand, site + hookOffset + length);
+
+	if (!MemWriteHookJmp(site + hookOffset, pCave))						return false;
+	if (length > 5 && !MemWriteNop(site + hookOffset + 5, length - 5))	return false;
+
+	return true;
+}
+
+//
+// MOTORBIKE: brake release (slot 15, FUN_00e4a930)
+//
+// [0x2C] -= 0.1 per frame, with the 0.1 in xmm2, which is also the throttle
+// threshold. The subtraction is moved to a cave that subtracts 0.1 * m.
+//
+//   comiss xmm0, xmm7; jbe +0x10
+//   cvtps2pd xmm0, xmm0
+//   subsd xmm0, xmm2           <- subsd xmm0, [bikeBrakeRelease]
+//   cvtpd2ps xmm0, xmm0
+//   movss [ecx+0x2C], xmm0
+//
+static const int patBikeBrakeRelease[] =
+{
+	0x0F, 0x2F, 0xC7, 0x76, 0x10,
+	0x0F, 0x5A, 0xC0,
+	0xF2, 0x0F, 0x5C, 0xC2,
+	0x66, 0x0F, 0x5A, 0xC0,
+	0xF3, 0x0F, 0x11, 0x41, 0x2C
+};
+
+static double bikeBrakeRelease = 0.10000000149011612;
+static bool bikeBrakeReleaseApplied = false;
+
+static bool ApplyCave_BikeBrakeRelease(BYTE* site)
+{
+	const BYTE prefix[] = { 0x0F, 0x5A, 0xC0 };			// cvtps2pd xmm0, xmm0
+	const BYTE opcode[] = { 0xF2, 0x0F, 0x5C, 0x05 };		// subsd xmm0, m64
+	return MakeRedirectCave(site, 5, 7, prefix, sizeof(prefix), opcode, sizeof(opcode), &bikeBrakeRelease);
+}
+
+//
+// MOTORBIKE: visual pitch sway [0x7C] (slot 5, FUN_00e514f0)
+//
+// [0x7C] += (accel / 10 - [0x7C]) / 10 per frame. Both divisions use xmm1;
+// only the second one (the smoothing) is moved to a cave.
+//
+//   subsd xmm2, xmm3
+//   cvtps2pd xmm0, xmm0
+//   divsd xmm2, xmm1           <- divsd xmm2, [bikePitchSway]
+//   movss xmm1, [...]
+//   addsd xmm2, xmm0
+//   cvtsd2ss xmm0, xmm2
+//   movss [esi+0x7C], xmm0
+//
+static const int patBikePitchSway[] =
+{
+	0xF2, 0x0F, 0x5C, 0xD3,
+	0x0F, 0x5A, 0xC0,
+	0xF2, 0x0F, 0x5E, 0xD1,
+	0xF3, 0x0F, 0x10, 0x0D, ANY, ANY, ANY, ANY,
+	0xF2, 0x0F, 0x58, 0xD0,
+	0xF2, 0x0F, 0x5A, 0xC2,
+	0xF3, 0x0F, 0x11, 0x46, 0x7C
+};
+
+static double bikePitchSway = 10.0;
+static bool bikePitchSwayApplied = false;
+
+static bool ApplyCave_BikePitchSway(BYTE* site)
+{
+	const BYTE prefix[] = { 0x0F, 0x5A, 0xC0 };			// cvtps2pd xmm0, xmm0
+	const BYTE opcode[] = { 0xF2, 0x0F, 0x5E, 0x15 };		// divsd xmm2, m64
+	return MakeRedirectCave(site, 4, 7, prefix, sizeof(prefix), opcode, sizeof(opcode), &bikePitchSway);
+}
+
 struct CodeCave
 {
 	const wchar_t*	name;
@@ -744,6 +931,8 @@ static const CodeCave codeCaves[] =
 {
 	{ L"Pose hood drag",	PATTERN(patPoseHoodDrag),	&ApplyCave_PoseHoodDrag,	&poseHoodDragApplied },
 	{ L"At-rest counter",	PATTERN(patRestCounter),	&ApplyCave_RestCounter,		&restFramesApplied },
+	{ L"Bike brake release",	PATTERN(patBikeBrakeRelease),	&ApplyCave_BikeBrakeRelease,	&bikeBrakeReleaseApplied },
+	{ L"Bike pitch sway",		PATTERN(patBikePitchSway),		&ApplyCave_BikePitchSway,		&bikePitchSwayApplied },
 };
 
 static const size_t numCodeCaves = sizeof(codeCaves) / sizeof(codeCaves[0]);
@@ -897,8 +1086,16 @@ void ApplyPatch_Physics()
 
 static bool useOriginal = false;
 
+static double scaledMultiplier = 1.0;
+
 static void WriteConstants()
 {
+	double m = useOriginal ? 1.0 : scaledMultiplier;
+
+	poseHoodDrag		= 10.0 / m;
+	bikeBrakeRelease	= 0.10000000149011612 * m;
+	bikePitchSway		= 1.0 / (1.0 - pow(0.9, m));
+
 	for (size_t i = 0; i < numConstants; i++)
 	{
 		FrameConstant& c = constants[i];
@@ -926,7 +1123,7 @@ void SetPhysicsOriginal(bool original)
 
 void UpdatePhysicsConstants(double multiplier)
 {
-	poseHoodDrag = 10.0 / multiplier;
+	scaledMultiplier = multiplier;
 
 	double frames = floor(10.0 / multiplier + 0.5);
 	restFrames = (BYTE)(frames < 1.0 ? 1.0 : (frames > 255.0 ? 255.0 : frames));

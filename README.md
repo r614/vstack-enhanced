@@ -26,6 +26,8 @@ Handling fixes:
 - Impact/skid hold countdown, wheelspin steering shake, skid intensity.
 - Bump detection threshold, the at-rest frame counter (10 frames), random steering wobble on damaged cars and engine idle shake (noise scaled to keep the same energy per second).
 
+Motorbike fixes: lean torque input smoothing, airborne pitch levelling and damping, steering return, brake ramp and release, wheelie steering damping, bump threshold, and the visual sway and front wheel spin.
+
 Cosmetic fixes: wheel spin-down while airborne, loose hood/trunk/bumper animations and part jiggle on damaged cars, and body sway and panel drag of non-simulated cars.
 
 The community workaround from [V-Patch issue #28](https://github.com/VaanaCZ/LANVP/issues/28) (scaling the 5.0 in the lateral force soft clamp) is not included: that clamp works on forces that are already integrated with the frame time, so scaling it adds grip at high frame rates instead of removing a frame-rate dependence.
