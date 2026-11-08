@@ -5,6 +5,7 @@
 // ----------------------------------------------------------------------------
 
 #include "fix_fps.h"
+#include "fix_physics.h"
 
 #include "patching.h"
 #include "shared.h"
@@ -342,6 +343,9 @@ bool ApplyPatch_Framerate(Patch* patch)
 	if (!QueryPerformanceCounter(&lastTime))		{ HandleError(L"[V-PATCH] Patching failed!", L"Could not query performance counter."); return false; }
 	if (!QueryPerformanceFrequency(&timeFrequency)) { HandleError(L"[V-PATCH] Patching failed!", L"Could not query performance frequency."); return false; }
 
+	// Frame-rate independent vehicle physics (see fix_physics.cpp)
+	ApplyPatch_Physics();
+
 	return true;
 }
 
@@ -382,6 +386,9 @@ void __stdcall Hook_Frame()
 
 	// Change bird speed limit
 	birdMaxSpeed = multiplier * *defaultBirdMaxSpeed;
+
+	// Rescale per-frame vehicle physics constants
+	UpdatePhysicsConstants(multiplier);
 
 	lastTime = currTime;
 }

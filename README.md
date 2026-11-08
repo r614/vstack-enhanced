@@ -7,6 +7,25 @@
 
 V-Patch is a lightweight community-developed patch designed to address common issues in the PC version of L.A. Noire. It also enables users to customize various technical aspects of the game, such as setting a custom field of view (FoV) or disabling the company logos that appear when starting the game. 
 
+## vstack-enhanced
+
+This fork adds frame-rate independent vehicle physics on top of V-Patch 2.0 (`lanvp/fix_physics.cpp`).
+
+The car code was tuned for a fixed 30 FPS. Most of it scales with the frame time, but a number of state updates advance by a fixed amount every frame (filters, decays, countdowns), and two forces are scaled by the frame time twice or not at all. With the frame rate unlocked these run faster or slower than intended. The fix redirects each affected constant to a value recomputed every frame from the frame time, so behaviour at any frame rate matches 30 FPS. At exactly 30 FPS nothing changes.
+
+Handling fixes:
+- Steering self-centering (steering snapped back to center too quickly at high FPS).
+- Roll damping couple (body roll was over-damped, 2x at 60 FPS).
+- Slope force along the car's forward axis (was scaled by the frame time twice, the same bug as the braking force V-Patch already fixes).
+- Frame-to-frame acceleration estimate used by tyre grip and the at-rest check (scaled with the square of the frame time).
+- Impact/skid hold countdown, wheelspin steering shake, skid intensity.
+
+Cosmetic fixes: wheel spin-down while airborne, loose hood/trunk/bumper animations on damaged cars, and body sway of non-simulated cars.
+
+The community workaround from issue #28 (scaling the 5.0 in the lateral force soft clamp) is not included: that clamp works on forces that are already integrated with the frame time, so scaling it adds grip at high frame rates instead of removing a frame-rate dependence.
+
+`tools/verify_physics.py` checks every signature in `fix_physics.cpp` against a `LANoire.exe`.
+
 ## What does V-Patch do?
 
 ### Total FPS Uncap (60+ FPS) & Variable Frame rate
@@ -90,7 +109,7 @@ In order to customize the settings of V-Patch, navigate to the game's directory 
 
 ## Known issues
 
-- Car steering is more sensitive than it should be.
+- Car steering is more sensitive than it should be. (vstack-enhanced: addressed by the physics fixes, pending in-game testing.)
 - On very high FPS (100+), the chandelier in the case "The Quarter Moon Murders" can break. If you encounter this issue, temporarily disable the patch or lower your FPS limit to below 100.
 
 > [!WARNING]

@@ -12,6 +12,9 @@
     <ClCompile Include="fix_fps.cpp">
       <Filter>Patch</Filter>
     </ClCompile>
+    <ClCompile Include="fix_physics.cpp">
+      <Filter>Patch</Filter>
+    </ClCompile>
     <ClCompile Include="fix_aspect.cpp">
       <Filter>Patch</Filter>
     </ClCompile>
@@ -39,6 +42,9 @@
       <Filter>Patch</Filter>
     </ClInclude>
     <ClInclude Include="fix_fps.h">
+      <Filter>Patch</Filter>
+    </ClInclude>
+    <ClInclude Include="fix_physics.h">
       <Filter>Patch</Filter>
     </ClInclude>
     <ClInclude Include="shared.h">

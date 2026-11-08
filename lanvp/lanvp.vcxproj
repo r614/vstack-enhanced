@@ -169,6 +169,7 @@
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="fix_aspect.cpp" />
     <ClCompile Include="fix_fps.cpp" />
+    <ClCompile Include="fix_physics.cpp" />
     <ClCompile Include="fix_resolution.cpp" />
     <ClCompile Include="opt_borderless_window.cpp" />
     <ClCompile Include="opt_version.cpp" />
@@ -179,6 +180,7 @@
     <ClInclude Include="config.h" />
     <ClInclude Include="fix_aspect.h" />
     <ClInclude Include="fix_fps.h" />
+    <ClInclude Include="fix_physics.h" />
     <ClInclude Include="fix_resolution.h" />
     <ClInclude Include="opt_borderless_window.h" />
     <ClInclude Include="opt_version.h" />
