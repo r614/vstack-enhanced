@@ -73,6 +73,17 @@ for m in CODE_RE.finditer(src):
     print(f"ok   {name:30s} @ {va:#x}  NOP {length} bytes at {va + off:#x} ({old})")
 
 rows = len(re.findall(r'\{\s*L"[^"]+",\s*PATTERN\(', src))
+CAVE_RE = re.compile(r'\{\s*L"([^"]+)",\s*PATTERN\((\w+)\),\s*&(\w+),')
+for m in CAVE_RE.finditer(src):
+    name, pat = m.group(1), m.group(2)
+    checked += 1
+    hits = find(patterns[pat])
+    if len(hits) != 1:
+        print(f"FAIL {name}: {len(hits)} matches")
+        ok = False
+        continue
+    print(f"ok   {name:30s} @ {base + t0 + hits[0]:#x}  code cave ({m.group(3)})")
+
 if checked == 0 or checked != rows:
     print(f"FAIL parsed {checked} of {rows} table rows")
     ok = False

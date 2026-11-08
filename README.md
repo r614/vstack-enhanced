@@ -19,8 +19,9 @@ Handling fixes:
 - Slope force along the car's forward axis (was scaled by the frame time twice, the same bug as the braking force V-Patch already fixes).
 - Frame-to-frame acceleration estimate used by tyre grip and the at-rest check (scaled with the square of the frame time).
 - Impact/skid hold countdown, wheelspin steering shake, skid intensity.
+- Bump detection threshold, the at-rest frame counter (10 frames), random steering wobble on damaged cars and engine idle shake (noise scaled to keep the same energy per second).
 
-Cosmetic fixes: wheel spin-down while airborne, loose hood/trunk/bumper animations on damaged cars, and body sway of non-simulated cars.
+Cosmetic fixes: wheel spin-down while airborne, loose hood/trunk/bumper animations and part jiggle on damaged cars, and body sway and panel drag of non-simulated cars.
 
 The community workaround from issue #28 (scaling the 5.0 in the lateral force soft clamp) is not included: that clamp works on forces that are already integrated with the frame time, so scaling it adds grip at high frame rates instead of removing a frame-rate dependence.
 

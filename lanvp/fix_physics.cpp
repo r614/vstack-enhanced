@@ -31,6 +31,7 @@
 //   INVERSE (factor c)       c' = c / m      (cancels a stray "* dt * 30")
 //   SQUARE (factor c)        c' = c * m^2
 //   DECAY_COMP (factor c)    c' = c * r / r^m  (r = aux; see the panel springs)
+//   POWER (factor c)         c' = c * m^aux    (noise, discrete oscillators)
 //
 // A few sites need a code change instead (see codePatches below).
 //
@@ -47,7 +48,8 @@ enum ScaleKind
 	SCALE_STEP,
 	SCALE_INVERSE,
 	SCALE_SQUARE,
-	SCALE_DECAY_COMP
+	SCALE_DECAY_COMP,
+	SCALE_POWER
 };
 
 struct FrameConstant
@@ -447,6 +449,95 @@ static const int patSwayKickRoll[] =
 	0x0F, 0x5A, 0xD8
 };
 
+//
+// CAR: random steering wobble on damaged cars (FUN_00e53b30)
+//
+// A fresh random offset (car[0x2C] * speed * (rand - 0.5) / 1000) is added to
+// the steering angle every frame. As noise feeding a force, its effect per
+// second scales with dt, so the amplitude is scaled by 1/sqrt(m) (divisor
+// 1000 * sqrt(m)) to keep the same wobble energy.
+//
+
+static const int patCarSteerWobble[] =
+{
+	0xDC, 0x35, ANY, ANY, ANY, ANY, 0xDC, 0x25,
+	ANY, ANY, ANY, ANY, 0xD9, 0x44, 0x24, 0x24,
+	0xD8, 0x4C, 0x24, 0x20, 0xDE, 0xC9, 0xDC, 0x35,
+	ANY, ANY, ANY, ANY, 0xD8, 0x43, 0x50, 0xD9,
+	0x5B, 0x50
+};
+
+//
+// CAR: engine idle shake (FUN_00e54e30)
+//
+// While revving at a standstill each wheel's suspension length is kicked by
+// sin(random phase) / 100 every frame. As a random walk its spread per second
+// scales with 1/dt, so the kick is scaled by sqrt(m) (divisor 100 / sqrt(m)).
+//
+
+static const int patCarIdleShake[] =
+{
+	0x0F, 0x28, 0x84, 0x24, 0x84, 0x02, 0x00, 0x00,
+	0xD9, 0x5C, 0x24, 0x10, 0x0F, 0x57, 0xED, 0xD9,
+	0x86, 0x3C, 0xFF, 0xFF, 0xFF, 0xD9, 0x44, 0x24,
+	0x10, 0xDC, 0x35, ANY, ANY, ANY, ANY, 0xDE,
+	0xE9, 0xD9, 0x9E, 0x3C, 0xFF, 0xFF, 0xFF
+};
+
+//
+// CAR: bump detection threshold (FUN_00e54e30)
+//
+// A bump is detected when a wheel's suspension length changes by more than
+// 0.05 between two frames. The same bump gives a smaller per-frame change at
+// higher frame rates, so the threshold is scaled by m.
+//
+
+static const int patCarBumpThreshold[] =
+{
+	0x66, 0x0F, 0x54, 0xC1, 0xF2, 0x0F, 0x5A, 0xC0,
+	0x0F, 0x2F, 0xC4, 0x89, 0x43, 0x5C, 0x76, 0x5C,
+	0xF2, 0x0F, 0x10, 0x1D, ANY, ANY, ANY, ANY,
+	0x8D, 0x8B, 0xE8, 0x02, 0x00, 0x00, 0xF3, 0x0F
+};
+
+//
+// COSMETIC: loose part jiggle (slot 9, FUN_00e57eb0)
+//
+// [0x704] position, [0x708] velocity in units per frame (position += velocity
+// with no dt), so this is a discrete per-frame oscillator:
+//
+//   v -= p * 0.125; p += v; v += accel / 70; v += noise / 30000; v *= 0.75
+//
+// With v measured per frame, the spring and the acceleration kick scale with
+// m^2, the damping with r^m, and the random kick with m^1.5 (constant noise
+// power per second).
+//
+
+static const int patJiggleSpring[] =
+{
+	0xF2, 0x0F, 0x59, 0x1D, ANY, ANY, ANY, ANY,
+	0x0F, 0x5A, 0xD2, 0xF2, 0x0F, 0x5C, 0xD3
+};
+
+static const int patJiggleKick[] =
+{
+	0xF3, 0x0F, 0x10, 0x8B, 0x08, 0x07, 0x00, 0x00,
+	0xF2, 0x0F, 0x5E, 0x05, ANY, ANY, ANY, ANY
+};
+
+static const int patJiggleNoise[] =
+{
+	0xF2, 0x0F, 0x5E, 0x05, ANY, ANY, ANY, ANY,
+	0xF2, 0x0F, 0x58, 0xC1
+};
+
+static const int patJiggleDamping[] =
+{
+	0xF2, 0x0F, 0x59, 0x05, ANY, ANY, ANY, ANY,
+	0x66, 0x0F, 0x5A, 0xC0, 0xF3, 0x0F, 0x11, 0x83,
+	0x08, 0x07, 0x00, 0x00
+};
+
 static FrameConstant constants[] =
 {
 	{ L"Car impact countdown",	PATTERN(patCarImpactCountdown),	23, true,	0.1,	SCALE_STEP },
@@ -487,6 +578,13 @@ static FrameConstant constants[] =
 	{ L"Sway damping",	PATTERN(patSwayDamping),	4, true,	0.949999988079071,	SCALE_DECAY },
 	{ L"Sway position step",	PATTERN(patSwayStep),	4, true,	3.0,	SCALE_STEP },
 	{ L"Sway pitch kick",	PATTERN(patSwayKickPitch),	4, true,	2.0,	SCALE_STEP },
+	{ L"Steering wobble",	PATTERN(patCarSteerWobble),	24, true,	1000.0,	SCALE_POWER, 0.5 },
+	{ L"Engine idle shake",	PATTERN(patCarIdleShake),	27, true,	100.0,	SCALE_POWER, -0.5 },
+	{ L"Bump threshold",	PATTERN(patCarBumpThreshold),	20, true,	0.05000000074505806,	SCALE_STEP },
+	{ L"Jiggle spring",	PATTERN(patJiggleSpring),	4, true,	0.125,	SCALE_POWER, 2.0 },
+	{ L"Jiggle kick",	PATTERN(patJiggleKick),	12, true,	70.0,	SCALE_POWER, -2.0 },
+	{ L"Jiggle noise",	PATTERN(patJiggleNoise),	4, true,	30000.0,	SCALE_POWER, -1.5 },
+	{ L"Jiggle damping",	PATTERN(patJiggleDamping),	4, true,	0.75,	SCALE_DECAY },
 	{ L"Sway roll kick",	PATTERN(patSwayKickRoll),	4, true,	0.5,	SCALE_STEP },
 };
 
@@ -531,6 +629,123 @@ static const CodePatch codePatches[] =
 };
 
 static const size_t numCodePatches = sizeof(codePatches) / sizeof(codePatches[0]);
+
+//
+// COSMETIC: speed drag on the hood of non-simulated cars (slot 10)
+//
+// [0x6E8] -= |speed / 10| * angle^2 every frame. The 10 is in xmm4, which is
+// also used by a correctly dt-scaled term later, so the division is moved to
+// a cave that divides by its own value (10 / m) instead.
+//
+//   movss xmm0, [ebx+0x754]
+//   cvtps2pd xmm0, xmm0
+//   divsd xmm0, xmm4           <- divsd xmm0, [poseHoodDrag]
+//
+static const int patPoseHoodDrag[] =
+{
+	0xF3, 0x0F, 0x10, 0x83, 0x54, 0x07, 0x00, 0x00,
+	0x0F, 0x5A, 0xC0,
+	0xF2, 0x0F, 0x5E, 0xC4
+};
+
+static double poseHoodDrag = 10.0;
+static bool poseHoodDragApplied = false;
+
+//
+// CAR: at-rest frame counter (FUN_00b4ae40)
+//
+// A vehicle counts as settled after 10 consecutive slow frames (1/3 s at
+// 30 FPS). The compare against 10 is moved to a cave that compares against
+// a per-frame value of round(10 / m) instead.
+//
+//   mov al, [ebx+0x19C5]
+//   cmp al, 10                 <- cmp al, [restFrames]
+//   jae +0x0D
+//   inc al
+//   mov [ebx+0x19C5], al
+//
+static const int patRestCounter[] =
+{
+	0x8A, 0x83, 0xC5, 0x19, 0x00, 0x00,
+	0x3C, 0x0A,
+	0x73, 0x0D,
+	0xFE, 0xC0,
+	0x88, 0x83, 0xC5, 0x19, 0x00, 0x00
+};
+
+static BYTE restFrames = 10;
+static bool restFramesApplied = false;
+
+static bool WriteRel32(BYTE* at, BYTE* target)
+{
+	DWORD rel = (DWORD)target - (DWORD)(at + 4);
+	memcpy(at, &rel, sizeof(rel));
+	return true;
+}
+
+static bool ApplyCave_PoseHoodDrag(BYTE* site)
+{
+	BYTE cave[] =
+	{
+		0xF3, 0x0F, 0x10, 0x83, 0x54, 0x07, 0x00, 0x00,	// movss xmm0, [ebx+0x754]
+		0x0F, 0x5A, 0xC0,								// cvtps2pd xmm0, xmm0
+		0xF2, 0x0F, 0x5E, 0x05, 0, 0, 0, 0,				// divsd xmm0, [poseHoodDrag]
+		0xE9, 0, 0, 0, 0								// jmp site + 15
+	};
+
+	double* pDrag = &poseHoodDrag;
+	memcpy(&cave[15], &pDrag, sizeof(pDrag));
+
+	BYTE* pCave = (BYTE*)ExecCopy(cave, sizeof(cave));
+	if (!pCave)											return false;
+	WriteRel32(pCave + 20, site + 15);
+
+	if (!MemWriteHookJmp(site, pCave))					return false;
+	if (!MemWriteNop(site + 5, 10))						return false;
+
+	return true;
+}
+
+static bool ApplyCave_RestCounter(BYTE* site)
+{
+	BYTE cave[] =
+	{
+		0x8A, 0x83, 0xC5, 0x19, 0x00, 0x00,				// mov al, [ebx+0x19C5]
+		0x3A, 0x05, 0, 0, 0, 0,							// cmp al, [restFrames]
+		0x0F, 0x83, 0, 0, 0, 0,							// jae site + 10 + 0x0D
+		0xE9, 0, 0, 0, 0								// jmp site + 10
+	};
+
+	BYTE* pFrames = &restFrames;
+	memcpy(&cave[8], &pFrames, sizeof(pFrames));
+
+	BYTE* pCave = (BYTE*)ExecCopy(cave, sizeof(cave));
+	if (!pCave)											return false;
+	WriteRel32(pCave + 14, site + 10 + 0x0D);
+	WriteRel32(pCave + 19, site + 10);
+
+	if (!MemWriteHookJmp(site, pCave))					return false;
+	if (!MemWriteNop(site + 5, 5))						return false;
+
+	return true;
+}
+
+struct CodeCave
+{
+	const wchar_t*	name;
+	const int*		pattern;
+	size_t			patternLength;
+	bool			(*apply)(BYTE* site);
+	bool*			applied;
+};
+
+static const CodeCave codeCaves[] =
+{
+	{ L"Pose hood drag",	PATTERN(patPoseHoodDrag),	&ApplyCave_PoseHoodDrag,	&poseHoodDragApplied },
+	{ L"At-rest counter",	PATTERN(patRestCounter),	&ApplyCave_RestCounter,		&restFramesApplied },
+};
+
+static const size_t numCodeCaves = sizeof(codeCaves) / sizeof(codeCaves[0]);
 
 static bool GetTextSection(BYTE** start, BYTE** end)
 {
@@ -584,6 +799,7 @@ static double ScaleValue(const FrameConstant& c, double multiplier)
 	case SCALE_INVERSE:		return c.original / multiplier;
 	case SCALE_SQUARE:		return c.original * multiplier * multiplier;
 	case SCALE_DECAY_COMP:	return c.original * c.aux / pow(c.aux, multiplier);
+	case SCALE_POWER:		return c.original * pow(multiplier, c.aux);
 	}
 
 	return c.original;
@@ -655,6 +871,23 @@ void ApplyPatch_Physics()
 		}
 	}
 
+	for (size_t i = 0; i < numCodeCaves; i++)
+	{
+		const CodeCave& c = codeCaves[i];
+
+		BYTE* match = FindUnique(c.pattern, c.patternLength, textStart, textEnd);
+		*c.applied = match && c.apply(match);
+
+		if (!*c.applied)
+		{
+			anyFailed = true;
+			size_t length = wcslen(message);
+			wcscat_s(&message[length], messageLength - length, L"\n    ");
+			length = wcslen(message);
+			wcscat_s(&message[length], messageLength - length, c.name);
+		}
+	}
+
 	if (anyFailed)
 	{
 		MessageBoxW(NULL, message, L"[V-PATCH] Physics fix", MB_OK);
@@ -663,6 +896,11 @@ void ApplyPatch_Physics()
 
 void UpdatePhysicsConstants(double multiplier)
 {
+	poseHoodDrag = 10.0 / multiplier;
+
+	double frames = floor(10.0 / multiplier + 0.5);
+	restFrames = (BYTE)(frames < 1.0 ? 1.0 : (frames > 255.0 ? 255.0 : frames));
+
 	for (size_t i = 0; i < numConstants; i++)
 	{
 		FrameConstant& c = constants[i];
