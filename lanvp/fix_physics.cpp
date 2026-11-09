@@ -937,32 +937,34 @@ static const CodeCave codeCaves[] =
 
 static const size_t numCodeCaves = sizeof(codeCaves) / sizeof(codeCaves[0]);
 
-static bool GetTextSection(BYTE** start, BYTE** end)
+//
+// Pattern search over the executable memory of the main module. Section
+// names differ between builds of the game, so this scans executable regions
+// the same way V-Patch's own signature search does.
+//
+static BYTE* moduleStart = nullptr;
+static BYTE* moduleEnd = nullptr;
+
+static bool InModule(const void* p)
 {
-	BYTE* base = (BYTE*)GetModuleHandle(NULL);
-	IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base;
-	IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + dos->e_lfanew);
-	IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(nt);
-
-	for (WORD i = 0; i < nt->FileHeader.NumberOfSections; i++, section++)
-	{
-		if (memcmp(section->Name, ".text", 6) == 0)
-		{
-			*start = base + section->VirtualAddress;
-			*end = *start + section->Misc.VirtualSize;
-			return true;
-		}
-	}
-
-	return false;
+	return (const BYTE*)p >= moduleStart && (const BYTE*)p < moduleEnd;
 }
 
-static BYTE* FindUnique(const int* pattern, size_t length, BYTE* start, BYTE* end)
+static BYTE* FindInRegion(const int* pattern, size_t length, BYTE* start, BYTE* end, BYTE* found, bool* duplicate)
 {
-	BYTE* found = nullptr;
+	// Search for the first fixed byte, then compare the rest
+	size_t anchor = 0;
+	while (anchor < length && pattern[anchor] == ANY)
+		anchor++;
 
 	for (BYTE* p = start; p + length <= end; p++)
 	{
+		BYTE* hit = (BYTE*)memchr(p + anchor, pattern[anchor], (end - length + anchor + 1) - (p + anchor));
+		if (!hit)
+			break;
+
+		p = hit - anchor;
+
 		size_t i = 0;
 		while (i < length && (pattern[i] == ANY || p[i] == (BYTE)pattern[i]))
 			i++;
@@ -970,12 +972,48 @@ static BYTE* FindUnique(const int* pattern, size_t length, BYTE* start, BYTE* en
 		if (i == length)
 		{
 			if (found)
-				return nullptr; // Not unique
+			{
+				*duplicate = true;
+				return found;
+			}
 			found = p;
 		}
 	}
 
 	return found;
+}
+
+BYTE* FindUniqueCode(const int* pattern, size_t length)
+{
+	if (!moduleStart)
+	{
+		BYTE* base = (BYTE*)GetModuleHandle(NULL);
+		IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + ((IMAGE_DOS_HEADER*)base)->e_lfanew);
+		moduleStart	= base;
+		moduleEnd	= base + nt->OptionalHeader.SizeOfImage;
+	}
+
+	BYTE* found = nullptr;
+	bool duplicate = false;
+
+	for (BYTE* ptr = moduleStart; ptr < moduleEnd && !duplicate; )
+	{
+		MEMORY_BASIC_INFORMATION info;
+		if (!VirtualQuery(ptr, &info, sizeof(info)))
+			break;
+
+		BYTE* regionEnd = (BYTE*)info.BaseAddress + info.RegionSize;
+		if (regionEnd > moduleEnd)
+			regionEnd = moduleEnd;
+
+		const DWORD readableCode = PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+		if (info.State == MEM_COMMIT && (info.Protect & readableCode) && !(info.Protect & PAGE_GUARD))
+			found = FindInRegion(pattern, length, ptr, regionEnd, found, &duplicate);
+
+		ptr = regionEnd;
+	}
+
+	return duplicate ? nullptr : found;
 }
 
 static double ScaleValue(const FrameConstant& c, double multiplier)
@@ -997,17 +1035,9 @@ static double ScaleValue(const FrameConstant& c, double multiplier)
 
 void ApplyPatch_Physics()
 {
-	BYTE* textStart;
-	BYTE* textEnd;
-	if (!GetTextSection(&textStart, &textEnd))
-	{
-		HandleError(L"[V-PATCH] Physics fix failed!", L"Could not locate the .text section.");
-		return;
-	}
-
-	const size_t messageLength = 1024;
-	wchar_t message[messageLength] = L"The following physics fixes could not be applied:\n";
-	bool anyFailed = false;
+	const wchar_t* failed[8];
+	size_t numFailed = 0;
+	size_t numTotal = numConstants + numCodePatches + numCodeCaves;
 
 	for (size_t i = 0; i < numConstants; i++)
 	{
@@ -1016,16 +1046,18 @@ void ApplyPatch_Physics()
 		c.valueFloat	= (float)c.original;
 		c.applied		= false;
 
-		BYTE* match = FindUnique(c.pattern, c.patternLength, textStart, textEnd);
+		BYTE* match = FindUniqueCode(c.pattern, c.patternLength);
 		if (match)
 		{
 			BYTE* operand = match + c.operandOffset;
 			void* constAddr = *(void**)operand;
 
-			double current = c.isDouble ? *(double*)constAddr : (double)*(float*)constAddr;
+			double current = 0.0;
+			if (InModule(constAddr))
+				current = c.isDouble ? *(double*)constAddr : (double)*(float*)constAddr;
 
 			// Constants are often floats widened to doubles (0.1 -> 0.100000001...)
-			if (fabs(current - c.original) <= 1e-6 * fabs(c.original))
+			if (InModule(constAddr) && fabs(current - c.original) <= 1e-6 * fabs(c.original))
 			{
 				c.original		= current;
 				c.valueDouble	= current;
@@ -1038,11 +1070,8 @@ void ApplyPatch_Physics()
 
 		if (!c.applied)
 		{
-			anyFailed = true;
-			size_t length = wcslen(message);
-			wcscat_s(&message[length], messageLength - length, L"\n    ");
-			length = wcslen(message);
-			wcscat_s(&message[length], messageLength - length, c.name);
+			if (numFailed < 8) failed[numFailed] = c.name;
+			numFailed++;
 		}
 	}
 
@@ -1050,14 +1079,11 @@ void ApplyPatch_Physics()
 	{
 		const CodePatch& p = codePatches[i];
 
-		BYTE* match = FindUnique(p.pattern, p.patternLength, textStart, textEnd);
+		BYTE* match = FindUniqueCode(p.pattern, p.patternLength);
 		if (!match || !MemWriteNop(match + p.offset, p.length))
 		{
-			anyFailed = true;
-			size_t length = wcslen(message);
-			wcscat_s(&message[length], messageLength - length, L"\n    ");
-			length = wcslen(message);
-			wcscat_s(&message[length], messageLength - length, p.name);
+			if (numFailed < 8) failed[numFailed] = p.name;
+			numFailed++;
 		}
 	}
 
@@ -1065,21 +1091,29 @@ void ApplyPatch_Physics()
 	{
 		const CodeCave& c = codeCaves[i];
 
-		BYTE* match = FindUnique(c.pattern, c.patternLength, textStart, textEnd);
+		BYTE* match = FindUniqueCode(c.pattern, c.patternLength);
 		*c.applied = match && c.apply(match);
 
 		if (!*c.applied)
 		{
-			anyFailed = true;
-			size_t length = wcslen(message);
-			wcscat_s(&message[length], messageLength - length, L"\n    ");
-			length = wcslen(message);
-			wcscat_s(&message[length], messageLength - length, c.name);
+			if (numFailed < 8) failed[numFailed] = c.name;
+			numFailed++;
 		}
 	}
 
-	if (anyFailed)
+	if (numFailed)
 	{
+		wchar_t message[1024];
+		int length = _snwprintf_s(message, _TRUNCATE,
+			L"%u of %u vehicle physics fixes could not be applied to this version of the game:\n",
+			(unsigned)numFailed, (unsigned)numTotal);
+
+		for (size_t i = 0; i < numFailed && i < 8 && length >= 0; i++)
+			length += _snwprintf_s(message + length, 1024 - length, _TRUNCATE, L"\n    %s", failed[i]);
+
+		if (numFailed > 8 && length >= 0)
+			_snwprintf_s(message + length, 1024 - length, _TRUNCATE, L"\n    ... and %u more", (unsigned)(numFailed - 8));
+
 		MessageBoxW(NULL, message, L"[V-PATCH] Physics fix", MB_OK);
 	}
 }

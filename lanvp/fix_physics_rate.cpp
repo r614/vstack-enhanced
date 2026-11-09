@@ -445,82 +445,122 @@ static void __fastcall Wrap_UpdateBike(void* dyn, void* edx, float dt, int flag,
 // Locating things at runtime
 //
 
-static bool GetSection(const char* name, BYTE** start, BYTE** end)
+//
+// Readable memory of the main module. Section names differ between builds of
+// the game, so the RTTI data is searched in every readable region.
+//
+struct Region
 {
+	BYTE* start;
+	BYTE* end;
+};
+
+static Region regions[64];
+static size_t numRegions = 0;
+
+static void CollectRegions()
+{
+	if (numRegions)
+		return;
+
 	BYTE* base = (BYTE*)GetModuleHandle(NULL);
-	IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base;
-	IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + dos->e_lfanew);
-	IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(nt);
+	IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + ((IMAGE_DOS_HEADER*)base)->e_lfanew);
+	BYTE* end = base + nt->OptionalHeader.SizeOfImage;
 
-	for (WORD i = 0; i < nt->FileHeader.NumberOfSections; i++, section++)
+	const DWORD readable = PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+		PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+
+	for (BYTE* ptr = base; ptr < end && numRegions < 64; )
 	{
-		if (strncmp((const char*)section->Name, name, IMAGE_SIZEOF_SHORT_NAME) == 0)
-		{
-			*start = base + section->VirtualAddress;
-			*end = *start + section->Misc.VirtualSize;
-			return true;
-		}
-	}
+		MEMORY_BASIC_INFORMATION info;
+		if (!VirtualQuery(ptr, &info, sizeof(info)))
+			break;
 
+		BYTE* regionEnd = (BYTE*)info.BaseAddress + info.RegionSize;
+		if (regionEnd > end)
+			regionEnd = end;
+
+		if (info.State == MEM_COMMIT && (info.Protect & readable) && !(info.Protect & PAGE_GUARD))
+		{
+			// Merge with the previous region if contiguous
+			if (numRegions && regions[numRegions - 1].end == ptr)
+				regions[numRegions - 1].end = regionEnd;
+			else
+				regions[numRegions++] = { ptr, regionEnd };
+		}
+
+		ptr = regionEnd;
+	}
+}
+
+static bool IsReadable(const void* p, size_t length)
+{
+	for (size_t r = 0; r < numRegions; r++)
+	{
+		if ((const BYTE*)p >= regions[r].start && (const BYTE*)p + length <= regions[r].end)
+			return true;
+	}
 	return false;
 }
 
-// Finds the primary vtable of a class from its RTTI type descriptor name
-static void** FindVTable(const char* rttiName)
+static BYTE* FindDword(DWORD value, BYTE* from = nullptr)
 {
-	BYTE *rdataStart, *rdataEnd, *dataStart, *dataEnd;
-	if (!GetSection(".rdata", &rdataStart, &rdataEnd) || !GetSection(".data", &dataStart, &dataEnd))
-		return nullptr;
-
-	size_t nameLength = strlen(rttiName) + 1;
-
-	for (BYTE* p = dataStart; p + nameLength <= dataEnd; p++)
+	for (size_t r = 0; r < numRegions; r++)
 	{
-		if (memcmp(p, rttiName, nameLength) != 0)
-			continue;
-
-		DWORD typeDescriptor = (DWORD)(p - 8);
-
-		// Complete object locator: signature 0, offset 0, ..., type descriptor at +12
-		for (BYTE* col = rdataStart; col + 20 <= rdataEnd; col += 4)
+		BYTE* start = regions[r].start;
+		if (from)
 		{
-			DWORD* c = (DWORD*)col;
-			if (c[3] != typeDescriptor || c[0] != 0 || c[1] != 0)
+			if (from >= regions[r].end)
 				continue;
+			if (from > start)
+				start = from;
+		}
 
-			for (BYTE* ref = rdataStart; ref + 8 <= rdataEnd; ref += 4)
-			{
-				if (*(DWORD*)ref == (DWORD)col)
-					return (void**)(ref + 4);
-			}
+		for (BYTE* p = start; p + 4 <= regions[r].end; p += 4)
+		{
+			if (*(DWORD*)p == value)
+				return p;
 		}
 	}
 
 	return nullptr;
 }
 
-static BYTE* FindUniquePattern(const int* pattern, size_t length)
+// Finds the primary vtable of a class from its RTTI type descriptor name
+static void** FindVTable(const char* rttiName)
 {
-	BYTE *start, *end;
-	if (!GetSection(".text", &start, &end))
-		return nullptr;
+	CollectRegions();
 
-	BYTE* found = nullptr;
-	for (BYTE* p = start; p + length <= end; p++)
+	size_t nameLength = strlen(rttiName) + 1;
+
+	for (size_t r = 0; r < numRegions; r++)
 	{
-		size_t i = 0;
-		while (i < length && (pattern[i] == -1 || p[i] == (BYTE)pattern[i]))
-			i++;
-
-		if (i == length)
+		for (BYTE* p = regions[r].start; p + nameLength <= regions[r].end; p++)
 		{
-			if (found)
-				return nullptr;
-			found = p;
+			p = (BYTE*)memchr(p, rttiName[0], regions[r].end - p);
+			if (!p || p + nameLength > regions[r].end)
+				break;
+
+			if (memcmp(p, rttiName, nameLength) != 0)
+				continue;
+
+			DWORD typeDescriptor = (DWORD)(p - 8);
+
+			// Complete object locator: signature 0, offset 0, ..., type descriptor at +12
+			for (BYTE* ref = FindDword(typeDescriptor); ref; ref = FindDword(typeDescriptor, ref + 4))
+			{
+				DWORD* col = (DWORD*)(ref - 12);
+				if (!IsReadable(col, 16) || col[0] != 0 || col[1] != 0)
+					continue;
+
+				BYTE* vtableRef = FindDword((DWORD)col);
+				if (vtableRef)
+					return (void**)(vtableRef + 4);
+			}
 		}
 	}
 
-	return found;
+	return nullptr;
 }
 
 //
@@ -574,8 +614,8 @@ void ApplyPatch_PhysicsRate()
 
 	if (physicsRate > 0)
 	{
-		carVisual = FindUniquePattern(patCarVisualCall, sizeof(patCarVisualCall) / sizeof(int));
-		bikeVisual = FindUniquePattern(patBikeVisualCall, sizeof(patBikeVisualCall) / sizeof(int));
+		carVisual = FindUniqueCode(patCarVisualCall, sizeof(patCarVisualCall) / sizeof(int));
+		bikeVisual = FindUniqueCode(patBikeVisualCall, sizeof(patBikeVisualCall) / sizeof(int));
 		if (!carVisual || !bikeVisual) { Fail(L"Could not find the vehicle visual update calls."); return; }
 
 		physicsEnabledFlag = *(BYTE**)(bikeVisual + 23);
