@@ -4,7 +4,7 @@
 
 This fork is not affiliated with or endorsed by Vaana or the V-Patch project, and is not affiliated with Take-Two or Rockstar Games. Please report problems with the physics changes here, not on the V-Patch issue tracker. For anything else, the [original V-Patch](https://github.com/VaanaCZ/LANVP) is the reference.
 
-Install it the same way as V-Patch (see [Installation](#installation)), using a `lanvp.asi` built from this repository in place of the V-Patch one. It replaces V-Patch; do not install both.
+**[Download the latest release](https://github.com/r614/vstack-enhanced/releases/latest)** and extract the contents of its `L.A.Noire` folder into your L.A. Noire installation (next to `LaNoire.exe`), including the `plugins` folder. It replaces V-Patch; do not install both. An existing `lanvp.ini` from V-Patch can be kept.
 
 The physics changes are new and have not been widely tested in game yet. The "car steering is more sensitive than it should be" issue listed under V-Patch's known issues is what they are meant to address.
 
